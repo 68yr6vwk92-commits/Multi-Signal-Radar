@@ -1,0 +1,25 @@
+
+name: MultiSignalRadar
+
+options:
+  bundleIdPrefix: com.multisignal
+  deploymentTarget:
+    iOS: "15.0"
+
+targets:
+  MultiSignalRadar:
+    type: application
+    platform: iOS
+    sources:
+      - path: MultiSignalRadar
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.multisignal.radar
+        PRODUCT_NAME: MultiSignalRadar
+        INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Detect nearby Bluetooth Low Energy advertisements."
+        INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Bluetooth access for radar functionality."
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_VERSION: 5.0
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+        CODE_SIGNING_ALLOWED: NO
