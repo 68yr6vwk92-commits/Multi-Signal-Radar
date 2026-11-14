@@ -153,7 +153,7 @@ struct ContentView: View {
                     }
                     .listRowBackground(Color.black)
                 }
-                .scrollContentBackground(.hidden)
+                
             }
             .padding()
         }
