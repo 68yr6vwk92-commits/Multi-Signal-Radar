@@ -1,4 +1,5 @@
 
+
 import SwiftUI
 import CoreBluetooth
 import Combine
@@ -16,8 +17,10 @@ struct RadarDevice: Identifiable {
     var estimatedDistance: Double {
         let referenceRSSI = -59.0
         let pathLossExponent = 2.2
+
         let exponent = (referenceRSSI - Double(rssi)) /
                        (10.0 * pathLossExponent)
+
         return min(50.0, max(0.3, pow(10.0, exponent)))
     }
 
@@ -52,14 +55,19 @@ final class RadarManager: NSObject,
         switch central.state {
         case .poweredOn:
             status = "Bluetooth ready"
+
         case .poweredOff:
             status = "Bluetooth is OFF"
+
         case .unauthorized:
             status = "Bluetooth permission denied"
+
         case .unsupported:
             status = "Bluetooth unsupported"
+
         case .resetting:
             status = "Bluetooth resetting"
+
         default:
             status = "Bluetooth unavailable"
         }
@@ -106,6 +114,7 @@ final class RadarManager: NSObject,
             ?? "Unknown BLE device"
 
         if let index = devices.firstIndex(where: { $0.id == id }) {
+
             let oldRSSI = devices[index].rssi
             devices[index].rssi = (oldRSSI * 3 + signal) / 4
             devices[index].lastSeen = Date()
@@ -113,7 +122,9 @@ final class RadarManager: NSObject,
             if devices[index].name == "Unknown BLE device" {
                 devices[index].name = name
             }
+
         } else {
+
             let newDevice = RadarDevice(
                 id: id,
                 name: name,
@@ -142,7 +153,7 @@ final class LocationManager: NSObject,
     private let manager = CLLocationManager()
 
     @Published var location: CLLocation?
-    @Published var status = "Waiting for GPS"
+    @Published var status = "WAITING FOR GPS"
 
     @Published var region = MKCoordinateRegion(
         center: CLLocationCoordinate2D(
@@ -154,6 +165,8 @@ final class LocationManager: NSObject,
             longitudeDelta: 0.02
         )
     )
+
+    private var hasCentered = false
 
     override init() {
         super.init()
@@ -169,6 +182,7 @@ final class LocationManager: NSObject,
         _ manager: CLLocationManager
     ) {
         switch manager.authorizationStatus {
+
         case .authorizedAlways, .authorizedWhenInUse:
             status = "GPS ACTIVE"
             manager.startUpdatingLocation()
@@ -191,16 +205,24 @@ final class LocationManager: NSObject,
         guard let newLocation = locations.last else { return }
 
         location = newLocation
+        status = "GPS ACTIVE"
+
+        if !hasCentered {
+            centerOnUser()
+            hasCentered = true
+        }
+    }
+
+    func centerOnUser() {
+        guard let currentLocation = location else { return }
 
         region = MKCoordinateRegion(
-            center: newLocation.coordinate,
+            center: currentLocation.coordinate,
             span: MKCoordinateSpan(
                 latitudeDelta: 0.015,
                 longitudeDelta: 0.015
             )
         )
-
-        status = "GPS ACTIVE"
     }
 
     func locationManager(
@@ -221,159 +243,207 @@ struct ContentView: View {
     @State private var nightVision = false
     @State private var selectedDevice: RadarDevice?
 
-    private var radarColor: Color {
-        nightVision ? .green : .green
-    }
-
     var body: some View {
-        ZStack {
 
-            // GPS Map Background
+        GeometryReader { geometry in
 
-            Map(
-                coordinateRegion: $location.region,
-                interactionModes: .all,
-                showsUserLocation: true,
-                userTrackingMode: .constant(.follow)
+            let radarDiameter = min(
+                geometry.size.width - 24,
+                geometry.size.height * 0.52
             )
-            .ignoresSafeArea()
 
-            // Tactical dark overlay
+            ZStack {
 
-            Color.black
-                .opacity(nightVision ? 0.72 : 0.48)
+                // Interactive GPS Map
+
+                Map(
+                    coordinateRegion: $location.region,
+                    interactionModes: .all,
+                    showsUserLocation: true,
+                    userTrackingMode: .constant(nil)
+                )
                 .ignoresSafeArea()
 
-            VStack(spacing: 12) {
+                // Tactical Dark Overlay
 
-                // Header
+                Color.black
+                    .opacity(nightVision ? 0.72 : 0.48)
+                    .ignoresSafeArea()
+                    .allowsHitTesting(false)
 
-                Text("MULTI-SIGNAL RADAR")
-                    .font(.title2.bold())
-                    .foregroundColor(radarColor)
+                VStack(spacing: 7) {
 
-                HStack {
-                    Label(
-                        location.status,
-                        systemImage: "location.fill"
+                    // Header
+
+                    Text("MULTI-SIGNAL RADAR")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundColor(.green)
+
+                    // GPS and Bluetooth Status
+
+                    HStack(spacing: 8) {
+
+                        Label(
+                            location.status,
+                            systemImage: "location.fill"
+                        )
+                        .foregroundColor(.cyan)
+
+                        Spacer()
+
+                        Text(radar.status)
+                            .foregroundColor(.green)
+                            .lineLimit(1)
+                    }
+                    .font(.system(size: 9, weight: .bold))
+
+                    // Large Radar
+
+                    RadarView(
+                        devices: radar.devices,
+                        nightVision: nightVision
                     )
-                    .foregroundColor(.cyan)
+                    .frame(
+                        width: radarDiameter,
+                        height: radarDiameter
+                    )
+                    .frame(maxWidth: .infinity)
 
-                    Spacer()
+                    Text("DISTANCE IS RSSI-BASED ESTIMATION")
+                        .font(.system(size: 8, weight: .medium))
+                        .foregroundColor(.gray)
 
-                    Text(radar.status)
-                        .foregroundColor(.green)
-                }
-                .font(.system(size: 10, weight: .bold))
+                    // Compact Controls
 
-                // Radar
+                    HStack(spacing: 6) {
 
-                RadarView(
-                    devices: radar.devices,
-                    nightVision: nightVision
-                )
-                .frame(maxWidth: 340)
-                .aspectRatio(1, contentMode: .fit)
+                        Button {
+                            radar.startScan()
+                        } label: {
+                            Label(
+                                "SCAN",
+                                systemImage: "dot.radiowaves.left.and.right"
+                            )
+                        }
+                        .disabled(radar.scanning)
+                        .tint(.green)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
 
-                Text("DISTANCE IS RSSI-BASED ESTIMATION")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundColor(.gray)
+                        Button {
+                            radar.stopScan()
+                        } label: {
+                            Label("STOP", systemImage: "stop.fill")
+                        }
+                        .disabled(!radar.scanning)
+                        .tint(.red)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
 
-                // Controls
+                        Button {
+                            nightVision.toggle()
+                        } label: {
+                            Label("NV", systemImage: "eye")
+                        }
+                        .tint(.green)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
 
-                HStack(spacing: 12) {
-
-                    Button("START SCAN") {
-                        radar.startScan()
+                        Button {
+                            location.centerOnUser()
+                        } label: {
+                            Label("MY GPS", systemImage: "location")
+                        }
+                        .tint(.cyan)
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
                     }
-                    .disabled(radar.scanning)
-                    .tint(.green)
-                    .buttonStyle(.borderedProminent)
+                    .font(.system(size: 10, weight: .bold))
 
-                    Button("STOP") {
-                        radar.stopScan()
+                    // Device Counter
+
+                    HStack {
+
+                        Text("DETECTED DEVICES")
+                            .foregroundColor(.green)
+
+                        Spacer()
+
+                        Text("\(radar.devices.count)")
+                            .foregroundColor(.red)
+                            .fontWeight(.bold)
                     }
-                    .disabled(!radar.scanning)
-                    .tint(.red)
-                    .buttonStyle(.borderedProminent)
+                    .font(.system(size: 10, weight: .bold))
 
-                    Button {
-                        nightVision.toggle()
-                    } label: {
-                        Image(systemName: "eye")
-                        Text("NV")
-                    }
-                    .tint(.green)
-                    .buttonStyle(.bordered)
-                }
+                    // Device List
 
-                // Device Counter
+                    ScrollView {
+                        LazyVStack(spacing: 5) {
 
-                HStack {
-                    Text("DETECTED DEVICES")
-                        .foregroundColor(.green)
+                            ForEach(radar.devices) { device in
 
-                    Spacer()
+                                Button {
+                                    selectedDevice = device
+                                } label: {
 
-                    Text("\(radar.devices.count)")
-                        .foregroundColor(.red)
-                        .fontWeight(.bold)
-                }
-                .font(.caption.bold())
+                                    HStack {
 
-                // Device List
+                                        VStack(
+                                            alignment: .leading,
+                                            spacing: 3
+                                        ) {
 
-                ScrollView {
-                    LazyVStack(spacing: 8) {
+                                            Text(device.name)
+                                                .foregroundColor(.green)
+                                                .font(
+                                                    .system(
+                                                        size: 12,
+                                                        weight: .bold
+                                                    )
+                                                )
 
-                        ForEach(radar.devices) { device in
+                                            Text("RSSI: \(device.rssi) dBm")
+                                                .foregroundColor(.orange)
+                                                .font(.system(size: 10))
+                                        }
 
-                            Button {
-                                selectedDevice = device
-                            } label: {
+                                        Spacer()
 
-                                HStack {
-                                    VStack(
-                                        alignment: .leading,
-                                        spacing: 5
-                                    ) {
-                                        Text(device.name)
-                                            .foregroundColor(.green)
-
-                                        Text("RSSI: \(device.rssi) dBm")
-                                            .foregroundColor(.orange)
-                                            .font(.caption)
+                                        Text(device.distanceLabel)
+                                            .foregroundColor(.cyan)
+                                            .font(
+                                                .system(
+                                                    size: 11,
+                                                    weight: .bold
+                                                )
+                                            )
                                     }
-
-                                    Spacer()
-
-                                    Text(device.distanceLabel)
-                                        .foregroundColor(.cyan)
-                                        .fontWeight(.bold)
+                                    .padding(7)
+                                    .background(Color.black.opacity(0.75))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 7)
+                                            .stroke(
+                                                Color.green.opacity(0.4),
+                                                lineWidth: 1
+                                            )
+                                    )
                                 }
-                                .padding(10)
-                                .background(Color.black.opacity(0.75))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(
-                                            Color.green.opacity(0.4),
-                                            lineWidth: 1
-                                        )
-                                )
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
+                    .frame(maxHeight: 115)
                 }
-                .frame(maxHeight: 180)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
             }
-            .padding()
         }
         .preferredColorScheme(.dark)
 
         // Device Details
 
         .sheet(item: $selectedDevice) { device in
+
             VStack(spacing: 15) {
 
                 Text("DEVICE INFORMATION")
@@ -441,7 +511,7 @@ struct RadarView: View {
 
             let radius = min(size.width, size.height) / 2 - 15
 
-            // Radar background
+            // Radar Background
 
             let background = CGRect(
                 x: center.x - radius,
@@ -455,7 +525,7 @@ struct RadarView: View {
                 with: .color(.black.opacity(0.65))
             )
 
-            // Distance rings
+            // Distance Rings
 
             for distance in ringDistances {
 
@@ -477,7 +547,13 @@ struct RadarView: View {
 
                 context.draw(
                     Text("\(Int(distance))m")
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .font(
+                            .system(
+                                size: 9,
+                                weight: .bold,
+                                design: .monospaced
+                            )
+                        )
                         .foregroundColor(.green),
                     at: CGPoint(
                         x: center.x + 18,
@@ -486,7 +562,7 @@ struct RadarView: View {
                 )
             }
 
-            // Direction lines
+            // Direction Lines
 
             for i in 0..<8 {
 
@@ -495,10 +571,12 @@ struct RadarView: View {
                 var line = Path()
                 line.move(to: center)
 
-                line.addLine(to: CGPoint(
-                    x: center.x + radius * CGFloat(cos(a)),
-                    y: center.y + radius * CGFloat(sin(a))
-                ))
+                line.addLine(
+                    to: CGPoint(
+                        x: center.x + radius * CGFloat(cos(a)),
+                        y: center.y + radius * CGFloat(sin(a))
+                    )
+                )
 
                 context.stroke(
                     line,
@@ -507,7 +585,7 @@ struct RadarView: View {
                 )
             }
 
-            // Sweep trail
+            // Sweep Trail
 
             for trailIndex in (1...14).reversed() {
 
@@ -520,10 +598,12 @@ struct RadarView: View {
                 var trail = Path()
                 trail.move(to: center)
 
-                trail.addLine(to: CGPoint(
-                    x: center.x + radius * CGFloat(cos(trailAngle)),
-                    y: center.y + radius * CGFloat(sin(trailAngle))
-                ))
+                trail.addLine(
+                    to: CGPoint(
+                        x: center.x + radius * CGFloat(cos(trailAngle)),
+                        y: center.y + radius * CGFloat(sin(trailAngle))
+                    )
+                )
 
                 context.stroke(
                     trail,
@@ -532,15 +612,17 @@ struct RadarView: View {
                 )
             }
 
-            // Main beam
+            // Main Beam
 
             var beam = Path()
             beam.move(to: center)
 
-            beam.addLine(to: CGPoint(
-                x: center.x + radius * CGFloat(cos(angle)),
-                y: center.y + radius * CGFloat(sin(angle))
-            ))
+            beam.addLine(
+                to: CGPoint(
+                    x: center.x + radius * CGFloat(cos(angle)),
+                    y: center.y + radius * CGFloat(sin(angle))
+                )
+            )
 
             context.stroke(
                 beam,
@@ -548,7 +630,7 @@ struct RadarView: View {
                 lineWidth: 2
             )
 
-            // Device dots
+            // Device Dots
 
             for device in devices {
 
@@ -594,7 +676,9 @@ struct RadarView: View {
 
                 context.fill(
                     Path(ellipseIn: glow),
-                    with: .color(.red.opacity(0.12 + pulse * 0.10))
+                    with: .color(
+                        .red.opacity(0.12 + pulse * 0.10)
+                    )
                 )
 
                 let dot = CGRect(
@@ -611,7 +695,13 @@ struct RadarView: View {
 
                 context.draw(
                     Text(device.distanceLabel)
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .font(
+                            .system(
+                                size: 10,
+                                weight: .bold,
+                                design: .monospaced
+                            )
+                        )
                         .foregroundColor(.cyan),
                     at: CGPoint(
                         x: point.x + 17,
@@ -620,7 +710,7 @@ struct RadarView: View {
                 )
             }
 
-            // Center glow
+            // Center Glow
 
             let centerGlow = CGRect(
                 x: center.x - 7,
@@ -647,7 +737,7 @@ struct RadarView: View {
             )
         }
 
-        // Animation
+        // Radar Animation
 
         .onReceive(
             Timer.publish(
