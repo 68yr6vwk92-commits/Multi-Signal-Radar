@@ -3,6 +3,7 @@
 import SwiftUI
 import CoreBluetooth
 import Combine
+import CoreLocation
 
 struct RadarDevice: Identifiable {
     let id: UUID
@@ -434,5 +435,34 @@ struct RadarView: View {
             pulsePhase = (pulsePhase + 0.12)
                 .truncatingRemainder(dividingBy: 2 * .pi)
         }
+    }
+    final class LocationManager: NSObject, ObservableObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+
+    @Published var location: CLLocation?
+    @Published var status = "Waiting for GPS"
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.requestWhenInUseAuthorization()
+        manager.startUpdatingLocation()
+    }
+
+    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        switch manager.authorizationStatus {
+        case .authorizedAlways, .authorizedWhenInUse:
+            status = "GPS ACTIVE"
+            manager.startUpdatingLocation()
+        case .denied, .restricted:
+            status = "GPS PERMISSION DENIED"
+        default:
+            status = "WAITING FOR GPS PERMISSION"
+        }
+    }
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        location = locations.last
     }
 }
