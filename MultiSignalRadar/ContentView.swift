@@ -260,7 +260,7 @@ struct ContentView: View {
                     coordinateRegion: $location.region,
                     interactionModes: .all,
                     showsUserLocation: true,
-                    userTrackingMode: .constant(nil)
+                    userTrackingMode: .constant(.none)
                 )
                 .ignoresSafeArea()
 
