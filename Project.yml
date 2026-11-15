@@ -18,6 +18,7 @@ targets:
         PRODUCT_NAME: MultiSignalRadar
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "Detect nearby Bluetooth Low Energy advertisements."
         INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription: "Bluetooth access for radar functionality."
+        INFOPLIST_KEY_NSLocationWhenInUseUsageDescription: "Location is used to display your position on the radar map."
         GENERATE_INFOPLIST_FILE: YES
         SWIFT_VERSION: 5.0
         TARGETED_DEVICE_FAMILY: "1,2"
